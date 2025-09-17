@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fact Check システム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <header class="header">
+            <h1>WikidataとChatGPTの回答によるFact Checkシステム</h1>
+        </header>
+
+        <!-- INPUT セクション -->
+        <section class="input-section">
+            <h2>INPUT</h2>
+            
+            <!-- 検索モード切り替え -->
+            <div class="mode-selector">
+                <label>
+                    <input type="radio" name="search-mode" value="single" checked>
+                    単体検索モード
+                </label>
+                <label>
+                    <input type="radio" name="search-mode" value="batch">
+                    一括検索モード（SPARQL）
+                </label>
+            </div>
+            
+            <div class="input-form">
+                <div class="form-group">
+                    <label for="entity-search">エンティティ検索:</label>
+                    <div class="search-container">
+                        <input type="text" id="entity-search" placeholder="エンティティ名を入力して検索（例：東京大学、富士山、トヨタ）" autocomplete="off">
+                        <div id="search-results" class="search-results"></div>
+                    </div>
+                    <div id="selected-entity" class="selected-entity" style="display: none;">
+                        <span id="selected-entity-name"></span>
+                        <button type="button" id="clear-entity" class="clear-btn">×</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="attribute-select">確認属性:</label>
+                    <select id="attribute-select">
+                        <option value="">属性を選択してください</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>プロンプトパターン:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="prompt-pattern" value="direct" checked> 直接型</label>
+                        <label><input type="radio" name="prompt-pattern" value="polite"> 丁寧型</label>
+                        <label><input type="radio" name="prompt-pattern" value="accuracy"> 正確性強調型</label>
+                        <label><input type="radio" name="prompt-pattern" value="reliability"> 信頼性重視型</label>
+                        <label><input type="radio" name="prompt-pattern" value="detailed"> 詳細型</label>
+                    </div>
+                    <div id="pattern-example" class="pattern-example">
+                        <!-- プロンプト例がここに表示されます -->
+                    </div>
+                </div>
+                
+                <!-- 一括検索モード専用UI -->
+                <div id="batch-search-panel" class="batch-search-panel" style="display: none;">
+                    <div class="simple-batch-search">
+                        <h3>🚀 簡易一括検索（確実動作版）</h3>
+                        <p class="batch-description">
+                            技術的な複雑さを回避し、確実に動作する簡易版です。<br>
+                            より高度な動的検索は下記の「高度な動的検索」をお試しください。
+                        </p>
+                        
+                        <div class="form-group">
+                            <label for="simple-category-select">検索カテゴリ:</label>
+                            <select id="simple-category-select">
+                                <option value="">カテゴリを選択してください</option>
+                                <option value="universities">日本の主要大学（10件）</option>
+                                <option value="prefectures">日本の都道府県（10件）</option>
+                                <option value="mountains">日本の高い山（10件）</option>
+                                <option value="companies">日本の大企業（10件）</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>検証属性:</label>
+                            <div class="simple-attributes">
+                                <label><input type="checkbox" value="location" checked> 所在地</label>
+                                <label><input type="checkbox" value="inception" checked> 設立年</label>
+                                <label><input type="checkbox" value="website"> ウェブサイト</label>
+                            </div>
+                        </div>
+                        
+                        <button type="button" id="execute-simple-batch" class="btn-primary">簡易一括検索を実行</button>
+                    </div>
+                    
+                    <div class="advanced-toggle">
+                        <button type="button" id="toggle-advanced" class="btn-secondary">🔧 高度な動的検索を表示</button>
+                    </div>
+                    
+                    <div class="query-builder" id="advanced-query-builder" style="display: none;">
+                        <h3>🔍 高度な動的SPARQL検索条件</h3>
+                        <p class="warning-text">⚠️ 実験的機能：エラーが発生する可能性があります</p>
+                        
+                        <div class="form-group">
+                            <label for="entity-type-search">エンティティタイプを検索:</label>
+                            <input type="text" id="entity-type-search" placeholder="例：大学、山、企業、人物、映画など" autocomplete="off">
+                            <div id="entity-type-results" class="search-results"></div>
+                            <div id="selected-entity-type" class="selected-entity" style="display: none;">
+                                <span id="selected-entity-type-name"></span> 
+                                <span id="selected-entity-type-id" class="entity-id"></span>
+                                <button type="button" id="clear-entity-type" class="clear-btn">×</button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>地域・国の絞り込み:</label>
+                            <select id="location-filter">
+                                <option value="">制限なし</option>
+                                <option value="Q17">日本のみ</option>
+                                <option value="Q30">アメリカのみ</option>
+                                <option value="Q29">スペインのみ</option>
+                                <option value="Q142">フランスのみ</option>
+                                <option value="Q183">ドイツのみ</option>
+                                <option value="Q145">イギリスのみ</option>
+                                <option value="Q148">中国のみ</option>
+                                <option value="Q668">インドのみ</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="additional-conditions">追加条件（任意）:</label>
+                            <textarea id="additional-conditions" placeholder="例：設立年が1900年以降、標高が1000m以上など" rows="3"></textarea>
+                            <small>自然言語で入力してください。SPARQLクエリに自動変換されます。</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="batch-limit">取得件数制限:</label>
+                            <input type="number" id="batch-limit" min="1" max="50" value="10" placeholder="10">
+                            <small>※初回は少数で試すことをお勧めします</small>
+                        </div>
+                    </div>
+                    
+                    <div class="search-preview">
+                        <h4>🔮 検索プレビュー</h4>
+                        <div id="query-preview" class="query-preview">
+                            <p class="placeholder-text">エンティティタイプを選択すると、生成されるSPARQLクエリがここに表示されます</p>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>検証したい属性を選択:</label>
+                        <div id="batch-attributes" class="batch-attributes">
+                            <p class="placeholder-text">エンティティタイプを選択すると、利用可能な属性が表示されます</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="execute-btn" class="execute-btn">実行</button>
+            </div>
+        </section>
+
+        <!-- 一括検索結果セクション -->
+        <section id="batch-results-section" class="batch-results-section" style="display: none;">
+            <h2>一括検索結果</h2>
+            <div class="batch-progress">
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div class="progress-info">
+                    <span id="progress-text">準備中...</span>
+                    <span id="progress-percentage">0%</span>
+                </div>
+            </div>
+            
+            <div class="batch-results-controls">
+                <button id="export-csv-btn" class="btn btn-secondary" disabled>CSV出力</button>
+                <button id="export-json-btn" class="btn btn-secondary" disabled>JSON出力</button>
+                <button id="clear-results-btn" class="btn btn-danger" disabled>結果クリア</button>
+            </div>
+            
+            <div class="batch-results-table-container">
+                <table id="batch-results-table" class="batch-results-table">
+                    <thead id="batch-table-head">
+                        <!-- 動的に生成されます -->
+                    </thead>
+                    <tbody id="batch-table-body">
+                        <!-- 結果がここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="batch-statistics">
+                <h3>検証統計</h3>
+                <canvas id="batch-stats-chart" width="800" height="400"></canvas>
+            </div>
+        </section>
+
+        <!-- 単体検索用データテーブル -->
+        <section id="single-data-section" class="data-section">
+            <div class="data-table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>ItemLabel</th>
+                            <th>設立年</th>
+                            <th>都道府県</th>
+                            <th>市町村</th>
+                            <th>標高</th>
+                            <th>全長</th>
+                            <th>ウェブサイト</th>
+                            <th>ChatGPT</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body">
+                        <!-- データがここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ChatGPT回答セクション -->
+        <section class="chatgpt-section" id="chatgpt-section" style="display: none;">
+            <h2>ChatGPT</h2>
+            <div id="chatgpt-response" class="response-box">
+                <!-- ChatGPTの回答がここに表示されます -->
+            </div>
+        </section>
+
+        <!-- 一致確認セクション -->
+        <section class="match-section" id="match-section" style="display: none;">
+            <h2>一致確認</h2>
+            <div class="match-table-container">
+                <table class="match-table">
+                    <thead>
+                        <tr>
+                            <th>項目</th>
+                            <th>Wikidata</th>
+                            <th>ChatGPT</th>
+                            <th>判定</th>
+                            <th>信頼度</th>
+                        </tr>
+                    </thead>
+                    <tbody id="match-table-body">
+                        <!-- 一致確認結果がここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 評価セクション -->
+        <section class="evaluation-section" id="evaluation-section" style="display: none;">
+            <h2>評価</h2>
+            <div class="evaluation-results">
+                <div class="accuracy-stats">
+                    <div class="stat-item">
+                        <span class="stat-value" id="accuracy-exact">0.0%</span>
+                        <span class="stat-label">完全一致</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="accuracy-partial">0.0%</span>
+                        <span class="stat-label">部分一致</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="accuracy-total">0.0%</span>
+                        <span class="stat-label">総合精度</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 実行履歴セクション -->
+        <section class="history-section">
+            <h2>実行履歴</h2>
+            <div class="history-controls">
+                <div class="history-stats">
+                    <span>総実行回数: <strong id="total-executions">0</strong></span>
+                    <span>平均精度: <strong id="average-accuracy">0%</strong></span>
+                    <span>最後の実行: <strong id="last-execution">-</strong></span>
+                </div>
+                <div class="history-actions">
+                    <button id="clear-history" class="clear-btn">履歴クリア</button>
+                    <button id="export-history" class="export-btn">履歴エクスポート</button>
+                </div>
+            </div>
+            <div class="history-table-container">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>実行日時</th>
+                            <th>エンティティ</th>
+                            <th>属性</th>
+                            <th>パターン</th>
+                            <th>判定</th>
+                            <th>信頼度</th>
+                            <th>詳細</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <!-- 履歴データがここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 統計・グラフセクション -->
+        <section class="statistics-section" id="statistics-section" style="display: none;">
+            <h2>分析結果</h2>
+            <div class="chart-container">
+                <div class="chart-item">
+                    <h3>パターン別精度</h3>
+                    <canvas id="pattern-chart" width="400" height="200"></canvas>
+                </div>
+                <div class="chart-item">
+                    <h3>属性別分析</h3>
+                    <canvas id="attribute-chart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- API設定・使用量監視 -->
+        <section class="api-settings-section">
+            <h2>API設定・使用量監視</h2>
+            <div class="api-form">
+                <form class="api-group">
+                    <label for="openai-api-key">OpenAI APIキー:</label>
+                    <div class="api-key-container">
+                        <input type="password" id="openai-api-key" placeholder="sk-..." autocomplete="off">
+                        <button type="button" id="test-api-key" class="test-btn">接続テスト</button>
+                    </div>
+                    <div id="api-status" class="api-status"></div>
+                </form>
+
+                
+                <div class="usage-monitor">
+                    <h3>使用量監視</h3>
+                    <div class="usage-stats">
+                        <div class="usage-item">
+                            <span class="usage-label">今日の使用回数:</span>
+                            <span class="usage-value" id="daily-usage">0</span>
+                            <span class="usage-limit">/ 20</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">今時間の使用回数:</span>
+                            <span class="usage-value" id="hourly-usage">0</span>
+                            <span class="usage-limit">/ 10</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">推定コスト:</span>
+                            <span class="usage-value" id="estimated-cost">$0.00</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">累計API実行回数:</span>
+                            <span class="usage-value" id="total-usage">0</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">制限状態:</span>
+                            <span class="usage-value" id="limit-status">制限有効</span>
+                        </div>
+                    </div>
+                    <div class="usage-controls">
+                        <button id="override-limits" class="override-btn">制限開放</button>
+                        <button id="restore-limits" class="restore-btn">制限復活</button>
+                        <button id="reset-usage" class="reset-btn">完全リセット</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- システム設定 -->
+        <section class="settings-section">
+            <h2>システム設定</h2>
+            <div class="settings-form">
+                <div class="settings-group">
+                    <label for="tolerance-percent">数値許容誤差 (%):</label>
+                    <input type="number" id="tolerance-percent" value="5" min="0" max="50">
+                </div>
+                
+                <div class="settings-group">
+                    <label for="llm-model">使用モデル:</label>
+                    <select id="llm-model">
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo (高速・低コスト)</option>
+                        <option value="gpt-4o-mini" selected>GPT-4o Mini (バランス型)</option>
+                        <option value="gpt-4o">GPT-4o (高性能)</option>
+                        <option value="gpt-4">GPT-4 (最高品質)</option>
+                        <option value="gpt-5">GPT-5 (次世代AI - Preview) ※利用不可時はGPT-4oで代替実行</option>
+                    </select>
+                </div>
+                
+                <div class="settings-group">
+                    <label for="daily-limit">1日あたりの使用上限:</label>
+                    <input type="number" id="daily-limit" value="20" min="1" max="100">
+                </div>
+                
+                <div class="settings-group">
+                    <label for="hourly-limit">1時間あたりの使用上限:</label>
+                    <input type="number" id="hourly-limit" value="10" min="1" max="50">
+                </div>
+                
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="strict-matching" checked>
+                        厳密マッチング
+                    </label>
+                </div>
+                
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="confirm-before-api" checked>
+                        API実行前に確認
+                    </label>
+                </div>
+                
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="url-protocol-flexible" checked>
+                        URL評価でプロトコル違い（https/http）を許容
+                    </label>
+                </div>
+                
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="url-www-flexible" checked>
+                        URL評価でwww.プレフィックス違いを許容
+                    </label>
+                </div>
+                
+                <button id="save-settings" class="settings-btn">設定保存</button>
+                <button id="export-results" class="settings-btn">結果エクスポート</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/main.js?v=20240916-11-japanese&t=1734200123"></script>
+</body>
+</html>
